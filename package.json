@@ -1,0 +1,27 @@
+{
+<<<<<<< HEAD
+  "name": "nodejs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^22.13.11",
+    "express": "^5.1.0"
+=======
+  "name": "replit-api-check",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+>>>>>>> e43192d688bfe4fb9aefe9c091a2d00cd790d27e
+  }
+}
