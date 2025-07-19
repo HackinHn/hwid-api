@@ -1,15 +1,12 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/verify.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/verify",
-      "dest": "api/verify.js"
-    }
-  ]
+  "name": "hwid-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node api/verify.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "serverless-http": "^3.0.0"
+  }
 }
