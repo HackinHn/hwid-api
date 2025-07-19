@@ -100,5 +100,7 @@ app.post("/verify", rateLimit, (req, res) => {
     return res.status(403).json({ status: "ERROR", message: "Invalid HWID" });
   }
 });
+module.exports = (req, res) => {
+  app(req, res);
+};
 
-module.exports = app;
