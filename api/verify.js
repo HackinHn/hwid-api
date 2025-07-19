@@ -1,12 +1,12 @@
 const express = require("express");
 const fs = require("fs");
-const crypto = require("crypto");
+const path = require("path");
 const serverless = require("serverless-http");
 
 const app = express();
-app.use(express.json()); // 🔥 Needed for POST requests
+app.use(express.json());
 
-// Configuration
+// Config
 const SECRET_KEY = process.env.SECRET_KEY || "81e2a788eb06df6d08a423d3f5f32732b3264631fcfaf906f7";
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "4FQCglZaFCTUXZzC1hdgDmavdOdW49Qm";
 const RATE_LIMIT = 5;
@@ -15,14 +15,15 @@ const RATE_LIMIT_WINDOW = 60 * 1000;
 const requestCounts = new Map();
 let WHITELIST = {};
 
-// Load whitelist.json
+// Load whitelist.json (safe for Vercel)
 function loadWhitelist() {
   try {
-    const data = fs.readFileSync("whitelist.json", "utf8");
+    const filePath = path.join(__dirname, "whitelist.json");
+    const data = fs.readFileSync(filePath, "utf8");
     WHITELIST = JSON.parse(data);
-    console.log("Whitelist loaded with", Object.keys(WHITELIST).length, "entries");
+    console.log("✅ Whitelist loaded:", Object.keys(WHITELIST).length, "entries");
   } catch (err) {
-    console.error("Error loading whitelist:", err);
+    console.error("❌ Error loading whitelist:", err);
   }
 }
 loadWhitelist();
@@ -60,12 +61,12 @@ function rateLimit(req, res, next) {
   next();
 }
 
-// Uptime check
+// Health check
 app.get("/", (req, res) => {
-  res.status(200).send("Whitelist server running.");
+  res.status(200).send("✅ Whitelist server is running.");
 });
 
-// Main verification route
+// Verify endpoint
 app.post("/verify", rateLimit, (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== `Bearer ${SECRET_KEY}`) {
@@ -80,9 +81,9 @@ app.post("/verify", rateLimit, (req, res) => {
   let decrypted;
   try {
     decrypted = xorDecrypt(hwid, ENCRYPTION_KEY);
-    console.log("Decrypted HWID:", decrypted);
+    console.log("🔓 Decrypted HWID:", decrypted);
   } catch (e) {
-    console.error("Decryption error:", e);
+    console.error("❌ Decryption error:", e);
     return res.status(400).json({ status: "ERROR", message: "Decryption failed" });
   }
 
@@ -91,9 +92,9 @@ app.post("/verify", rateLimit, (req, res) => {
     return res.status(400).json({ status: "ERROR", message: "Expired timestamp" });
   }
 
-  loadWhitelist(); // Reload for live updates
+  loadWhitelist(); // Always reload to support live changes
   const valid = WHITELIST[decrypted];
-  console.log("Whitelist check:", valid);
+  console.log("🔍 Whitelist check:", valid);
 
   if (valid) {
     return res.status(200).json({ status: "VALID" });
@@ -102,4 +103,4 @@ app.post("/verify", rateLimit, (req, res) => {
   }
 });
 
-module.exports = serverless(app); // ✅ Correct way to export for Vercel
+module.exports = serverless(app);
