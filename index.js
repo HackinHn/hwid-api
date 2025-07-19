@@ -1,116 +1,102 @@
 const express = require("express");
 const fs = require("fs");
 const crypto = require("crypto");
-const app = express();
 
+const app = express();
 app.use(express.json());
 
 // Configuration
-const SECRET_KEY = process.env.SECRET_KEY || "81e2a788eb06df6d08a423d3f5f32732b3264631fcfaf906f7"; // Store in .env
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "4FQCglZaFCTUXZzC1hdgDmavdOdW49Qm"; // Store in .env
-const RATE_LIMIT = 5; // Max requests per minute per IP
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute in milliseconds
-const requestCounts = new Map(); // In-memory rate-limiting
+const SECRET_KEY = process.env.SECRET_KEY || "81e2a788eb06df6d08a423d3f5f32732b3264631fcfaf906f7";
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "4FQCglZaFCTUXZzC1hdgDmavdOdW49Qm";
+const RATE_LIMIT = 5;
+const RATE_LIMIT_WINDOW = 60 * 1000;
 
+const requestCounts = new Map();
 let WHITELIST = {};
 
-// Load whitelist.json at startup
+// Load whitelist.json
 function loadWhitelist() {
   try {
     const data = fs.readFileSync("whitelist.json", "utf8");
     WHITELIST = JSON.parse(data);
-    console.log("Whitelist loaded:", Object.keys(WHITELIST).length, "entries");
+    console.log("Whitelist loaded with", Object.keys(WHITELIST).length, "entries");
   } catch (err) {
-    console.error("Failed to load whitelist.json:", err);
+    console.error("Error loading whitelist:", err);
   }
 }
-
 loadWhitelist();
 
-// Improved XOR decryption to match Lua's byte-level XOR
+// XOR decrypt
 function xorDecrypt(str, key) {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const strBytes = encoder.encode(str); // Convert to UTF-8 bytes
-  const keyBytes = encoder.encode(key); // Convert key to UTF-8 bytes
-  let result = new Uint8Array(strBytes.length);
-
+  const strBytes = encoder.encode(str);
+  const keyBytes = encoder.encode(key);
+  const result = new Uint8Array(strBytes.length);
   for (let i = 0; i < strBytes.length; i++) {
     result[i] = strBytes[i] ^ keyBytes[i % keyBytes.length];
   }
-  return decoder.decode(result); // Convert back to string
+  return decoder.decode(result);
 }
 
-// Rate-limiting middleware
+// Rate limit middleware
 function rateLimit(req, res, next) {
-  const clientIp = req.headers["x-forwarded-for"] || req.ip || "unknown";
-  const currentTime = Date.now();
-  const clientData = requestCounts.get(clientIp) || { count: 0, timestamp: currentTime };
+  const ip = req.headers["x-forwarded-for"] || req.ip || "unknown";
+  const now = Date.now();
+  const data = requestCounts.get(ip) || { count: 0, timestamp: now };
 
-  if (currentTime - clientData.timestamp > RATE_LIMIT_WINDOW) {
-    clientData.count = 0;
-    clientData.timestamp = currentTime;
+  if (now - data.timestamp > RATE_LIMIT_WINDOW) {
+    data.count = 0;
+    data.timestamp = now;
   }
 
-  if (clientData.count >= RATE_LIMIT) {
+  if (data.count >= RATE_LIMIT) {
     return res.status(429).json({ status: "ERROR", message: "Rate limit exceeded" });
   }
 
-  clientData.count += 1;
-  requestCounts.set(clientIp, clientData);
+  data.count++;
+  requestCounts.set(ip, data);
   next();
 }
 
-// Basic GET route for uptime checking
+// Uptime check
 app.get("/", (req, res) => {
-  res.status(200).send("Whitelist server is running.");
+  res.status(200).send("Whitelist server running.");
 });
 
-// POST /verify route for Lua script
+// Main verification route
 app.post("/verify", rateLimit, (req, res) => {
-  // Verify Authorization header
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== `Bearer ${SECRET_KEY}`) {
     return res.status(401).json({ status: "ERROR", message: "Invalid authorization" });
   }
 
-  // Log raw request body
-  console.log("Raw Request Body:", req.body);
-
-  // Parse request body
-  const { hwid, token, timestamp } = req.body; // Use plain timestamp from client
+  const { hwid, token, timestamp } = req.body;
   if (!hwid || !token || !timestamp) {
-    return res.status(400).json({ status: "ERROR", message: "Missing HWID, token, or timestamp" });
+    return res.status(400).json({ status: "ERROR", message: "Missing required fields" });
   }
 
-  // Decrypt HWID
-  let decryptedHwid;
+  let decrypted;
   try {
-    decryptedHwid = xorDecrypt(hwid, ENCRYPTION_KEY);
-    console.log("Decrypted HWID:", decryptedHwid); // Debug log
-  } catch (err) {
-    console.error("HWID Decryption Error:", err);
-    return res.status(400).json({ status: "ERROR", message: "Invalid HWID format" });
+    decrypted = xorDecrypt(hwid, ENCRYPTION_KEY);
+    console.log("Decrypted HWID:", decrypted);
+  } catch (e) {
+    console.error("Decryption error:", e);
+    return res.status(400).json({ status: "ERROR", message: "Decryption failed" });
   }
 
-  // Validate timestamp with debug and increased window
   const serverTime = Date.now() / 1000;
-  console.log("Received Timestamp:", timestamp); // Debug log
-  console.log("Server Time:", serverTime); // Debug log
-  console.log("Time Difference:", Math.abs(serverTime - timestamp)); // Debug log
-  if (!timestamp || Math.abs(serverTime - timestamp) > 600) { // Increased to 10 minutes
-    return res.status(400).json({ status: "ERROR", message: "Invalid or expired token" });
+  if (Math.abs(serverTime - timestamp) > 600) {
+    return res.status(400).json({ status: "ERROR", message: "Expired timestamp" });
   }
 
-  // Reload whitelist to get live changes
-  loadWhitelist();
+  loadWhitelist(); // Reload for live updates
+  const valid = WHITELIST[decrypted];
+  console.log("Whitelist check:", valid);
 
-  // Verify HWID
-  if (WHITELIST[decryptedHwid]) {
-    console.log(`Valid HWID: ${decryptedHwid}`);
+  if (valid) {
     return res.status(200).json({ status: "VALID" });
   } else {
-    console.log(`Invalid HWID: ${decryptedHwid}`);
     return res.status(403).json({ status: "ERROR", message: "Invalid HWID" });
   }
 });
