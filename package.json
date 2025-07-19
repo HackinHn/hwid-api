@@ -1,9 +1,9 @@
 {
   "name": "hwid-api",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "verify.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node verify.js"
   },
   "dependencies": {
     "express": "^4.18.2"
