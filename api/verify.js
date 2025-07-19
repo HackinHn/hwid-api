@@ -56,8 +56,9 @@ function rateLimit(req, res, next) {
 }
 
 app.get("/", (req, res) => {
-  res.status(200).send("Whitelist server running.");
+  res.send("Server is working!");
 });
+
 
 app.post("/verify", rateLimit, (req, res) => {
   const authHeader = req.headers.authorization;
