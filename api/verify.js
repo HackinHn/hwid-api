@@ -93,4 +93,5 @@ app.post("/verify", rateLimit, (req, res) => {
   }
 });
 
-module.exports = serverless(app);
+module.exports = require("serverless-http")(app);
+
