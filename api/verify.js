@@ -1,34 +1,29 @@
 const express = require("express");
 const fs = require("fs");
-const path = require("path");
+const crypto = require("crypto");
 const serverless = require("serverless-http");
 
 const app = express();
 app.use(express.json());
 
-// Config
-const SECRET_KEY = process.env.SECRET_KEY || "81e2a788eb06df6d08a423d3f5f32732b3264631fcfaf906f7";
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "4FQCglZaFCTUXZzC1hdgDmavdOdW49Qm";
+const SECRET_KEY = process.env.SECRET_KEY || "your_secret_key_here";
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "your_encryption_key_here";
 const RATE_LIMIT = 5;
 const RATE_LIMIT_WINDOW = 60 * 1000;
 
 const requestCounts = new Map();
 let WHITELIST = {};
 
-// Load whitelist.json (safe for Vercel)
 function loadWhitelist() {
   try {
-    const filePath = path.join(__dirname, "whitelist.json");
-    const data = fs.readFileSync(filePath, "utf8");
+    const data = fs.readFileSync(__dirname + "/whitelist.json", "utf8");
     WHITELIST = JSON.parse(data);
-    console.log("✅ Whitelist loaded:", Object.keys(WHITELIST).length, "entries");
   } catch (err) {
-    console.error("❌ Error loading whitelist:", err);
+    console.error("Error loading whitelist:", err);
   }
 }
 loadWhitelist();
 
-// XOR decrypt
 function xorDecrypt(str, key) {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -41,7 +36,6 @@ function xorDecrypt(str, key) {
   return decoder.decode(result);
 }
 
-// Rate limit middleware
 function rateLimit(req, res, next) {
   const ip = req.headers["x-forwarded-for"] || req.ip || "unknown";
   const now = Date.now();
@@ -61,12 +55,10 @@ function rateLimit(req, res, next) {
   next();
 }
 
-// Health check
 app.get("/", (req, res) => {
-  res.status(200).send("✅ Whitelist server is running.");
+  res.status(200).send("Whitelist server running.");
 });
 
-// Verify endpoint
 app.post("/verify", rateLimit, (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || authHeader !== `Bearer ${SECRET_KEY}`) {
@@ -75,15 +67,13 @@ app.post("/verify", rateLimit, (req, res) => {
 
   const { hwid, token, timestamp } = req.body;
   if (!hwid || !token || !timestamp) {
-    return res.status(400).json({ status: "ERROR", message: "Missing required fields" });
+    return res.status(400).json({ status: "ERROR", message: "Missing fields" });
   }
 
   let decrypted;
   try {
     decrypted = xorDecrypt(hwid, ENCRYPTION_KEY);
-    console.log("🔓 Decrypted HWID:", decrypted);
   } catch (e) {
-    console.error("❌ Decryption error:", e);
     return res.status(400).json({ status: "ERROR", message: "Decryption failed" });
   }
 
@@ -92,9 +82,8 @@ app.post("/verify", rateLimit, (req, res) => {
     return res.status(400).json({ status: "ERROR", message: "Expired timestamp" });
   }
 
-  loadWhitelist(); // Always reload to support live changes
+  loadWhitelist();
   const valid = WHITELIST[decrypted];
-  console.log("🔍 Whitelist check:", valid);
 
   if (valid) {
     return res.status(200).json({ status: "VALID" });
